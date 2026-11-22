@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#14532d">
 <link rel="manifest" href="manifest.webmanifest">
+<script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <title>KassenKompass</title>
 <style>
 :root{--green:#14532d;--green2:#166534;--bg:#f3f6f3;--card:#fff;--muted:#647067;--line:#e2e9e2;--red:#b42318}
@@ -38,6 +39,13 @@ small{color:var(--muted)}
 <body>
 <header><h1>KassenKompass</h1><p>Gemeinsame Kassen einfach verwalten</p></header>
 <main>
+  <section class="card" id="accountPanel">
+  <h2>Microsoft-Konto</h2>
+  <p id="accountStatus" class="muted">Nicht angemeldet</p>
+  <button id="loginBtn">Mit Microsoft anmelden</button>
+  <button id="logoutBtn" class="secondary hidden">Abmelden</button>
+  <button id="syncBtn" class="secondary hidden">Mit OneDrive synchronisieren</button>
+  </section>
   <section class="card">
     <div class="row between"><div><div class="muted">Aktive Kasse</div><h2 id="activeName" style="margin:3px 0 0">Noch keine Kasse</h2></div><button class="secondary" id="manageBtn">Kassen verwalten</button></div>
     <div class="muted" style="margin-top:18px">Aktueller Kassenstand</div><div class="balance" id="balance">0,00 €</div>
@@ -129,7 +137,66 @@ document.getElementById('entryForm').onsubmit=e=>{e.preventDefault();let c=activ
 document.getElementById('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='kassenkompass-daten.json';a.click();URL.revokeObjectURL(a.href)};
 document.getElementById('date').value=new Date().toISOString().slice(0,10);
 if(!state.cashbooks.length){let c={id:crypto.randomUUID(),name:'Beispielkasse',entries:[]};state.cashbooks.push(c);state.active=c.id;localStorage.setItem(KEY,JSON.stringify(state))}
-render();
+
+const msalApp = new msal.PublicClientApplication({
+  auth: {
+    clientId: "2216f9f1-ec66-4c5a-91c8-495376dce574",
+    authority: "https://login.microsoftonline.com/consumers",
+    redirectUri: window.location.origin + window.location.pathname
+  },
+  cache: {
+    cacheLocation: "sessionStorage"
+  }
+});
+
+let microsoftAccount = null;
+
+async function initMicrosoft() {
+  await msalApp.initialize();
+  const accounts = msalApp.getAllAccounts();
+
+  if (accounts.length) {
+    microsoftAccount = accounts[0];
+    showMicrosoftStatus();
+  }
+}
+
+function showMicrosoftStatus() {
+  const status = document.getElementById("accountStatus");
+  const login = document.getElementById("loginBtn");
+  const logout = document.getElementById("logoutBtn");
+  const sync = document.getElementById("syncBtn");
+
+  if (microsoftAccount) {
+    status.textContent = "Angemeldet als: " + microsoftAccount.username;
+    login.classList.add("hidden");
+    logout.classList.remove("hidden");
+    sync.classList.remove("hidden");
+  }
+}
+
+document.getElementById("loginBtn").onclick = async () => {
+  try {
+    const result = await msalApp.loginPopup({
+      scopes: ["Files.ReadWrite"]
+    });
+    microsoftAccount = result.account;
+    showMicrosoftStatus();
+  } catch (error) {
+    alert("Anmeldung fehlgeschlagen: " + error.message);
+  }
+};
+
+document.getElementById("logoutBtn").onclick = async () => {
+  await msalApp.logoutPopup({ account: microsoftAccount });
+  microsoftAccount = null;
+  location.reload();
+};
+
+initMicrosoft().catch(error => {
+  document.getElementById("accountStatus").textContent =
+    "Microsoft-Fehler: " + error.message;
+});render();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script>
 </body></html>
