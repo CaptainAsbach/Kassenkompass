@@ -196,7 +196,76 @@ document.getElementById("logoutBtn").onclick = async () => {
 initMicrosoft().catch(error => {
   document.getElementById("accountStatus").textContent =
     "Microsoft-Fehler: " + error.message;
-});render();
+});
+async function getOneDriveToken() {
+  try {
+    return await msalApp.acquireTokenSilent({
+      scopes: ["Files.ReadWrite"],
+      account: microsoftAccount
+    });
+  } catch (error) {
+    return await msalApp.acquireTokenPopup({
+      scopes: ["Files.ReadWrite"],
+      account: microsoftAccount
+    });
+  }
+}
+
+document.getElementById("syncBtn").onclick = async () => {
+  const button = document.getElementById("syncBtn");
+
+  try {
+    button.textContent = "Synchronisiere ...";
+    button.disabled = true;
+
+    const token = await getOneDriveToken();
+    const url = "https://graph.microsoft.com/v1.0/me/drive/root:/KassenKompass.json:/content";
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: "Bearer " + token.accessToken
+      }
+    });
+
+    if (response.status === 404) {
+      const upload = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + token.accessToken,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(state, null, 2)
+      });
+
+      if (!upload.ok) {
+        throw new Error("Speichern fehlgeschlagen: " + await upload.text());
+      }
+
+      alert("Erfolg! Deine Kassenbücher wurden erstmals in OneDrive gespeichert.");
+    } else if (response.ok) {
+      const cloudState = await response.json();
+
+      if (!Array.isArray(cloudState.cashbooks)) {
+        throw new Error("Die OneDrive-Datei enthält keine gültigen Kassenbuchdaten.");
+      }
+
+      if (confirm("Eine KassenKompass-Datei existiert bereits. Möchtest du deren Daten auf dieses Gerät laden?")) {
+        state = cloudState;
+        localStorage.setItem(KEY, JSON.stringify(state));
+        render();
+        alert("Die Daten wurden aus OneDrive geladen.");
+      }
+    } else {
+      throw new Error("OneDrive-Fehler: " + await response.text());
+    }
+  } catch (error) {
+    alert("Synchronisierung fehlgeschlagen:\n" + error.message);
+  } finally {
+    button.textContent = "Mit OneDrive synchronisieren";
+    button.disabled = false;
+  }
+};
+render();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script>
 </body></html>
