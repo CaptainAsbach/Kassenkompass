@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KassenKompass – OneDrive-Test</title>
+  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f7f4; color: #203328; }
+    button { padding: 14px 20px; background: #217346; color: white; border: 0; border-radius: 8px; font-size: 16px; }
+    #result { margin-top: 20px; padding: 15px; background: white; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>KassenKompass</h1>
+  <h2>OneDrive-Verbindung testen</h2>
+  <p>Dieser Test meldet dich bei Microsoft an und prüft, ob KassenKompass dein OneDrive lesen kann. Es werden keine Dateien erstellt oder verändert.</p>
+  <button id="login">Mit Microsoft anmelden</button>
+  <div id="result">Noch nicht verbunden.</div>
+
+  <script>
+    const msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId: "2216f9f1-ec66-4c5a-91c8-495376dce574",
+        authority: "https://login.microsoftonline.com/consumers",
+        redirectUri: window.location.origin + window.location.pathname
+      },
+      cache: {
+        cacheLocation: "sessionStorage"
+      }
+    });
+
+    const result = document.getElementById("result");
+
+    document.getElementById("login").addEventListener("click", async () => {
+      result.textContent = "Microsoft-Anmeldung wird gestartet …";
+
+      try {
+        await msalInstance.initialize();
+
+        const login = await msalInstance.loginPopup({
+          scopes: ["Files.ReadWrite"]
+        });
+
+        const token = await msalInstance.acquireTokenSilent({
+          scopes: ["Files.ReadWrite"],
+          account: login.account
+        });
+
+        const response = await fetch(
+          "https://graph.microsoft.com/v1.0/me/drive?$select=id,driveType",
+          {
+            headers: {
+              Authorization: "Bearer " + token.accessToken
+            }
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("OneDrive-Abfrage fehlgeschlagen: " + response.status + " " + await response.text());
+        }
+
+        const drive = await response.json();
+
+        result.textContent =
+          "VERBINDUNG ERFOLGREICH!\n\n" +
+          "Angemeldet als: " + login.account.username + "\n" +
+          "OneDrive-Typ: " + drive.driveType + "\n\n" +
+          "Microsoft-Anmeldung und OneDrive-Zugriff funktionieren.";
+      } catch (error) {
+        result.textContent = "FEHLER:\n" + (error.message || error);
+      }
+    });
+  </script>
+</body>
+</html>
