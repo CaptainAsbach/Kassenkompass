@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#14532d">
+<link rel="manifest" href="manifest.webmanifest">
+<title>KassenKompass</title>
+<style>
+:root{--green:#14532d;--green2:#166534;--bg:#f3f6f3;--card:#fff;--muted:#647067;--line:#e2e9e2;--red:#b42318}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:16px system-ui,-apple-system,Segoe UI,sans-serif;color:#18221b}
+header{background:var(--green);color:white;padding:22px max(18px,calc((100vw - 920px)/2));}
+header h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:#d8eadc;font-size:14px}
+main{max-width:920px;margin:22px auto;padding:0 16px 40px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 16px;box-shadow:0 2px 8px #142b1710}
+h2{font-size:18px;margin:0 0 14px}.muted{color:var(--muted);font-size:13px}
+.balance{font-size:32px;font-weight:750;color:var(--green);letter-spacing:-1px}
+button,.button{border:0;border-radius:10px;background:var(--green2);color:white;padding:11px 15px;font-weight:650;font-size:14px;cursor:pointer}
+button.secondary{background:#e8efe9;color:var(--green)}button.danger{background:#fff0ee;color:var(--red)}
+input,select,textarea{width:100%;border:1px solid #ccd8ce;border-radius:10px;padding:11px;font:inherit;background:white;color:#18221b}
+label{display:block;font-size:13px;font-weight:650;margin:0 0 6px}
+.field{margin-bottom:12px;flex:1;min-width:180px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tab{background:#e5ece6;color:#23432c}.tab.active{background:var(--green);color:white}
+.hidden{display:none!important}
+.item{padding:12px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
+.item:first-child{border-top:0}.amount{font-weight:750;white-space:nowrap}.positive{color:#18733a}.negative{color:var(--red)}
+.pill{font-size:11px;padding:4px 8px;border-radius:20px;background:#edf3ee;color:#35523c;display:inline-block}
+.pill.open{background:#fff1d6;color:#805300}
+.personrow{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}
+small{color:var(--muted)}
+.notice{background:#fff8e8;border:1px solid #f2dfad;padding:12px;border-radius:12px;font-size:13px;line-height:1.45}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.balance{font-size:28px}main{margin-top:14px}}
+</style>
+</head>
+<body>
+<header><h1>KassenKompass</h1><p>Gemeinsame Kassen einfach verwalten</p></header>
+<main>
+  <section class="card">
+    <div class="row between"><div><div class="muted">Aktive Kasse</div><h2 id="activeName" style="margin:3px 0 0">Noch keine Kasse</h2></div><button class="secondary" id="manageBtn">Kassen verwalten</button></div>
+    <div class="muted" style="margin-top:18px">Aktueller Kassenstand</div><div class="balance" id="balance">0,00 €</div>
+    <div class="row" style="gap:22px;margin-top:10px"><div><div class="muted">Einnahmen</div><strong id="incomeTotal">0,00 €</strong></div><div><div class="muted">Ausgaben</div><strong id="expenseTotal">0,00 €</strong></div><div><div class="muted">Offene Erstattungen</div><strong id="openTotal">0,00 €</strong></div></div>
+  </section>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="book">Buchungen</button>
+    <button class="tab" data-tab="new">Neue Buchung</button>
+    <button class="tab" data-tab="refunds">Erstattungen</button>
+    <button class="tab" data-tab="people">Personen</button>
+  </div>
+
+  <section id="panel-book" class="card">
+    <div class="row between"><h2>Letzte Buchungen</h2><button class="secondary" id="exportBtn">Daten exportieren</button></div>
+    <div id="transactions"><p class="muted">Noch keine Buchungen vorhanden.</p></div>
+  </section>
+
+  <section id="panel-new" class="card hidden">
+    <h2>Neue Buchung erfassen</h2>
+    <form id="entryForm">
+      <div class="grid">
+        <div class="field"><label for="kind">Buchungsart</label><select id="kind"><option value="expense">Ausgabe</option><option value="income">Einnahme</option></select></div>
+        <div class="field"><label for="date">Datum</label><input id="date" type="date" required></div>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="amount">Betrag in Euro</label><input id="amount" type="number" min="0.01" step="0.01" placeholder="0,00" required></div>
+        <div class="field"><label for="category">Kategorie</label><input id="category" placeholder="z. B. Getränke, Material"></div>
+      </div>
+      <div class="field"><label for="description">Beschreibung</label><input id="description" placeholder="Wofür war die Buchung?" required></div>
+      <div id="payerFields">
+        <div class="field"><label for="payer">Wer hat bezahlt?</label><input id="payer" list="peopleList" placeholder="Name der Person"><datalist id="peopleList"></datalist></div>
+        <div class="field"><label for="reimburse">Bekommt die Person das Geld zurück?</label><select id="reimburse"><option value="yes">Ja – Erstattung ist offen</option><option value="no">Nein – keine Erstattung nötig</option></select></div>
+      </div>
+      <div class="field"><label for="note">Notiz (optional)</label><textarea id="note" rows="2" placeholder="Zusätzliche Informationen"></textarea></div>
+      <button type="submit">Buchung speichern</button>
+    </form>
+  </section>
+
+  <section id="panel-refunds" class="card hidden">
+    <h2>Offene Erstattungen</h2><div id="refundList"><p class="muted">Keine offenen Erstattungen.</p></div>
+  </section>
+
+  <section id="panel-people" class="card hidden">
+    <h2>Auslagen je Person</h2><div id="peopleSummary"><p class="muted">Noch keine Auslagen vorhanden.</p></div>
+  </section>
+
+  <section id="managePanel" class="card hidden">
+    <h2>Kassen verwalten</h2>
+    <div class="field"><label for="newCashName">Neue Kasse anlegen</label><input id="newCashName" placeholder="z. B. Jugendfeuerwehr Einhart"></div>
+    <button id="createCash">Kasse erstellen</button>
+    <div id="cashList" style="margin-top:16px"></div>
+  </section>
+
+  <section class="notice">
+    <strong>Prototyp-Hinweis:</strong> Diese erste Version speichert Daten zunächst nur in diesem Browser auf diesem Gerät. Die gemeinsame OneDrive-Synchronisierung und persönliche Benutzeranmeldung werden im nächsten Entwicklungsschritt angebunden. Noch keine echten Kassen- oder vertraulichen Daten eintragen.
+  </section>
+</main>
+<script>
+const KEY='kassenkompass-prototype-v1';
+let state=JSON.parse(localStorage.getItem(KEY)||'{"cashbooks":[],"active":null}');
+const eur=n=>Number(n||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+const active=()=>state.cashbooks.find(c=>c.id===state.active);
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(state));render()};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function totals(c){let income=c.entries.filter(e=>e.kind==='income').reduce((a,e)=>a+e.amount,0);let expense=c.entries.filter(e=>e.kind==='expense').reduce((a,e)=>a+e.amount,0);let open=c.entries.filter(e=>e.kind==='expense'&&e.reimburse&&!e.refunded).reduce((a,e)=>a+e.amount,0);return{income,expense,open,balance:income-expense}}
+function render(){
+ const c=active();document.getElementById('activeName').textContent=c?.name||'Noch keine Kasse';
+ const t=c?totals(c):{income:0,expense:0,open:0,balance:0};
+ document.getElementById('balance').textContent=eur(t.balance);document.getElementById('incomeTotal').textContent=eur(t.income);document.getElementById('expenseTotal').textContent=eur(t.expense);document.getElementById('openTotal').textContent=eur(t.open);
+ const entries=c?[...c.entries].reverse():[];
+ document.getElementById('transactions').innerHTML=entries.length?entries.map(e=>`<div class="item"><div><strong>${esc(e.description)}</strong><div class="muted">${esc(e.date)} · ${esc(e.category||'Ohne Kategorie')} ${e.kind==='expense'&&e.payer?'· bezahlt von '+esc(e.payer):''}</div>${e.kind==='expense'&&e.reimburse?`<span class="pill ${e.refunded?'':'open'}">${e.refunded?'Erstattet':'Erstattung offen'}</span>`:''}</div><div class="amount ${e.kind==='income'?'positive':'negative'}">${e.kind==='income'?'+':'−'} ${eur(e.amount)}</div></div>`).join(''):'<p class="muted">Noch keine Buchungen vorhanden.</p>';
+ const openEntries=c?c.entries.filter(e=>e.kind==='expense'&&e.reimburse&&!e.refunded):[];
+ document.getElementById('refundList').innerHTML=openEntries.length?openEntries.map(e=>`<div class="item"><div><strong>${esc(e.payer||'Unbekannt')}</strong><div class="muted">${esc(e.description)} · ${esc(e.date)}</div><span class="pill open">Offen</span></div><div style="text-align:right"><div class="amount">${eur(e.amount)}</div><button class="secondary" onclick="markRefunded('${e.id}')">Als bezahlt markieren</button></div></div>`).join(''):'<p class="muted">Keine offenen Erstattungen.</p>';
+ const by={};if(c)c.entries.filter(e=>e.kind==='expense'&&e.payer).forEach(e=>{by[e.payer]??={paid:0,refunded:0,open:0};by[e.payer].paid+=e.amount;if(e.reimburse){if(e.refunded)by[e.payer].refunded+=e.amount;else by[e.payer].open+=e.amount}});
+ const names=Object.keys(by);document.getElementById('peopleSummary').innerHTML=names.length?names.map(n=>`<div class="personrow"><div><strong>${esc(n)}</strong><div class="muted">Ausgelegt ${eur(by[n].paid)} · zurück ${eur(by[n].refunded)}</div></div><div style="text-align:right"><strong>${eur(by[n].open)}</strong><div class="muted">noch offen</div></div></div>`).join(''):'<p class="muted">Noch keine Auslagen vorhanden.</p>';
+ document.getElementById('peopleList').innerHTML=names.map(n=>`<option value="${esc(n)}">`).join('');
+ document.getElementById('cashList').innerHTML=state.cashbooks.map(x=>`<div class="item"><div><strong>${esc(x.name)}</strong><div class="muted">${x.entries.length} Buchungen</div></div><div class="row"><button class="secondary" onclick="selectCash('${x.id}')">Öffnen</button><button class="danger" onclick="deleteCash('${x.id}')">Löschen</button></div></div>`).join('')||'<p class="muted">Noch keine Kasse angelegt.</p>';
+ document.getElementById('payerFields').classList.toggle('hidden',document.getElementById('kind').value==='income');
+}
+window.markRefunded=id=>{let c=active(),e=c?.entries.find(x=>x.id===id);if(e){e.refunded=true;e.refundedAt=new Date().toISOString().slice(0,10);save()}};
+window.selectCash=id=>{state.active=id;save();document.getElementById('managePanel').classList.add('hidden')};
+window.deleteCash=id=>{if(confirm('Diese Kasse samt Buchungen wirklich löschen?')){state.cashbooks=state.cashbooks.filter(x=>x.id!==id);if(state.active===id)state.active=state.cashbooks[0]?.id||null;save()}};
+document.getElementById('createCash').onclick=()=>{let name=document.getElementById('newCashName').value.trim();if(!name)return alert('Bitte einen Kassennamen eingeben.');let c={id:crypto.randomUUID(),name,entries:[]};state.cashbooks.push(c);state.active=c.id;document.getElementById('newCashName').value='';save()};
+document.getElementById('manageBtn').onclick=()=>document.getElementById('managePanel').classList.toggle('hidden');
+document.getElementById('kind').onchange=render;
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));['book','new','refunds','people'].forEach(k=>document.getElementById('panel-'+k).classList.toggle('hidden',k!==b.dataset.tab));document.getElementById('managePanel').classList.add('hidden')});
+document.getElementById('entryForm').onsubmit=e=>{e.preventDefault();let c=active();if(!c)return alert('Bitte zuerst eine Kasse erstellen.');let kind=document.getElementById('kind').value;let entry={id:crypto.randomUUID(),kind,date:document.getElementById('date').value,amount:Math.round(Number(document.getElementById('amount').value)*100)/100,category:document.getElementById('category').value.trim(),description:document.getElementById('description').value.trim(),payer:kind==='expense'?document.getElementById('payer').value.trim():'',reimburse:kind==='expense'&&document.getElementById('reimburse').value==='yes',refunded:false,note:document.getElementById('note').value.trim()};if(!entry.amount||!entry.description)return;c.entries.push(entry);e.target.reset();document.getElementById('date').value=new Date().toISOString().slice(0,10);save();document.querySelector('[data-tab="book"]').click()};
+document.getElementById('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='kassenkompass-daten.json';a.click();URL.revokeObjectURL(a.href)};
+document.getElementById('date').value=new Date().toISOString().slice(0,10);
+if(!state.cashbooks.length){let c={id:crypto.randomUUID(),name:'Beispielkasse',entries:[]};state.cashbooks.push(c);state.active=c.id;localStorage.setItem(KEY,JSON.stringify(state))}
+render();
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script>
+</body></html>
