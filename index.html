@@ -219,7 +219,7 @@ document.getElementById("syncBtn").onclick = async () => {
     button.disabled = true;
 
     const token = await getOneDriveToken();
-    const url = "https://graph.microsoft.com/v1.0/me/drive/root:/KassenKompass.json:/content";
+    const url = "https://graph.microsoft.com/v1.0/me/drive/root:/Jugendfeuerwehr Einhart/Kasse/KassenKompass/KassenKompass.json:/content";
 
     const response = await fetch(url, {
       headers: {
