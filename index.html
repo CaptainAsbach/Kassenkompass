@@ -216,7 +216,7 @@ document.getElementById("syncBtn").onclick = async () => {
   const button = document.getElementById("syncBtn");
 
   try {
-    button.textContent = "Ordner wird geprüft ...";
+    button.textContent = "Ordner wird gelesen ...";
     button.disabled = true;
 
     const token = await getOneDriveToken();
@@ -239,16 +239,39 @@ document.getElementById("syncBtn").onclick = async () => {
     }
 
     const folder = result.remoteItem || result;
+    const driveId = folder.parentReference?.driveId;
+    const itemId = folder.id;
+
+    if (!driveId || !itemId) {
+      throw new Error("Die Ordner-ID oder Laufwerks-ID fehlt.");
+    }
+
+    const filesResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/drives/" +
+      driveId + "/items/" + itemId + "/children",
+      {
+        headers: {
+          Authorization: "Bearer " + token.accessToken
+        }
+      }
+    );
+
+    const filesResult = await filesResponse.json();
+
+    if (!filesResponse.ok) {
+      throw new Error(filesResult.error?.message || JSON.stringify(filesResult));
+    }
+
+    const names = (filesResult.value || []).map(file => file.name);
 
     alert(
-      "ORDNERZUGRIFF ERFOLGREICH!\n\n" +
-      "Name: " + (folder.name || result.name) + "\n" +
-      "Ordner-ID: " + (folder.id || result.id) + "\n\n" +
-      "Der freigegebene Ordner ist erreichbar."
+      "ORDNER ERFOLGREICH GELESEN!\n\n" +
+      "Gefundene Dateien:\n" +
+      (names.length ? names.join("\n") : "Der Ordner ist leer.")
     );
 
   } catch (error) {
-    alert("Ordnerzugriff fehlgeschlagen:\n" + error.message);
+    alert("Fehler:\n" + error.message);
   } finally {
     button.textContent = "Mit OneDrive synchronisieren";
     button.disabled = false;
