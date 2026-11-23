@@ -151,15 +151,98 @@ const msalApp = new msal.PublicClientApplication({
 
 let microsoftAccount = null;
 
+
+async function loadFromOneDrive() {
+  const token = await getOneDriveToken();
+
+  const shareId = "u!aHR0cHM6Ly8xZHJ2Lm1zL2YvYy8wODVBQjg5MEM5MEFDRjkzL0FpTW1kaWFNNjNWSHI4blJfV1dJdnpNP2U9bWlZdTJu";
+
+  const folderResponse = await fetch(
+    "https://graph.microsoft.com/v1.0/shares/" + shareId + "/driveItem",
+    {
+      headers: {
+        Authorization: "Bearer " + token.accessToken
+      }
+    }
+  );
+
+  const folderData = await folderResponse.json();
+
+  if (!folderResponse.ok) {
+    throw new Error(folderData.error?.message || "Ordner nicht erreichbar.");
+  }
+
+  const folder = folderData.remoteItem || folderData;
+  const driveId = folder.parentReference?.driveId;
+  const folderId = folder.id;
+
+  const filesResponse = await fetch(
+    "https://graph.microsoft.com/v1.0/drives/" +
+    driveId + "/items/" + folderId + "/children",
+    {
+      headers: {
+        Authorization: "Bearer " + token.accessToken
+      }
+    }
+  );
+
+  const filesData = await filesResponse.json();
+
+  if (!filesResponse.ok) {
+    throw new Error(filesData.error?.message || "Dateiliste nicht lesbar.");
+  }
+
+  const file = filesData.value.find(
+    item => item.name === "KassenKompass.json"
+  );
+
+  if (!file) {
+    throw new Error("KassenKompass.json wurde nicht gefunden.");
+  }
+
+  const dataResponse = await fetch(
+    "https://graph.microsoft.com/v1.0/drives/" +
+    driveId + "/items/" + file.id + "/content",
+    {
+      headers: {
+        Authorization: "Bearer " + token.accessToken
+      }
+    }
+  );
+
+  if (!dataResponse.ok) {
+    throw new Error("Die Kassendaten konnten nicht geladen werden.");
+  }
+
+  const cloudState = await dataResponse.json();
+
+  if (!Array.isArray(cloudState.cashbooks)) {
+    throw new Error("Die JSON-Datei enthält keine gültigen Kassen.");
+  }
+
+  state = cloudState;
+  localStorage.setItem(KEY, JSON.stringify(state));
+  render();
+
+  document.getElementById("accountStatus").textContent =
+    "Angemeldet als: " + microsoftAccount.username +
+    " · Gemeinsame Daten geladen";
+
+  alert("Die gemeinsamen Kassen wurden aus OneDrive geladen!");
+}
+
 async function initMicrosoft() {
   await msalApp.initialize();
+
   const accounts = msalApp.getAllAccounts();
 
   if (accounts.length) {
     microsoftAccount = accounts[0];
     showMicrosoftStatus();
+    await loadFromOneDrive();
   }
 }
+
 
 function showMicrosoftStatus() {
   const status = document.getElementById("accountStatus");
@@ -180,10 +263,14 @@ document.getElementById("loginBtn").onclick = async () => {
     const result = await msalApp.loginPopup({
       scopes: ["Files.ReadWrite"]
     });
+
     microsoftAccount = result.account;
     showMicrosoftStatus();
+
+    await loadFromOneDrive();
+
   } catch (error) {
-    alert("Anmeldung fehlgeschlagen: " + error.message);
+    alert("Anmeldung oder Laden fehlgeschlagen: " + error.message);
   }
 };
 
