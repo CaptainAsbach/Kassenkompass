@@ -109,7 +109,79 @@ const KEY='kassenkompass-prototype-v1';
 let state=JSON.parse(localStorage.getItem(KEY)||'{"cashbooks":[],"active":null}');
 const eur=n=>Number(n||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
 const active=()=>state.cashbooks.find(c=>c.id===state.active);
-const save=()=>{localStorage.setItem(KEY,JSON.stringify(state));render()};
+
+let cloudSaveEnabled = false;
+let cloudSaveTimer = null;
+
+async function saveToOneDrive() {
+  if (!cloudSaveEnabled || !microsoftAccount) return;
+
+  try {
+    const token = await getOneDriveToken();
+    const shareId = "u!aHR0cHM6Ly8xZHJ2Lm1zL2YvYy8wODVBQjg5MEM5MEFDRjkzL0FpTW1kaWFNNjNWSHI4blJfV1dJdnpNP2U9bWlZdTJu";
+
+    const folderResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/shares/" + shareId + "/driveItem",
+      { headers: { Authorization: "Bearer " + token.accessToken } }
+    );
+
+    const folderData = await folderResponse.json();
+    if (!folderResponse.ok) throw new Error(folderData.error?.message);
+
+    const folder = folderData.remoteItem || folderData;
+    const driveId = folder.parentReference?.driveId;
+    const folderId = folder.id;
+
+    const filesResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/drives/" + driveId +
+      "/items/" + folderId + "/children",
+      { headers: { Authorization: "Bearer " + token.accessToken } }
+    );
+
+    const filesData = await filesResponse.json();
+    if (!filesResponse.ok) throw new Error(filesData.error?.message);
+
+    const file = filesData.value.find(
+      item => item.name === "KassenKompass.json"
+    );
+
+    if (!file) throw new Error("KassenKompass.json nicht gefunden.");
+
+    const uploadResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/drives/" +
+      driveId + "/items/" + file.id + "/content",
+      {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + token.accessToken,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(state)
+      }
+    );
+
+    if (!uploadResponse.ok) throw new Error("Upload fehlgeschlagen.");
+
+    document.getElementById("accountStatus").textContent =
+      "Angemeldet als: " + microsoftAccount.username +
+      " · Mit OneDrive synchronisiert";
+
+  } catch (error) {
+    document.getElementById("accountStatus").textContent =
+      "OneDrive-Speicherfehler: " + error.message;
+  }
+}
+
+const save = () => {
+  localStorage.setItem(KEY, JSON.stringify(state));
+  render();
+
+  if (cloudSaveEnabled) {
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(saveToOneDrive, 1000);
+  }
+};
+  
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function totals(c){let income=c.entries.filter(e=>e.kind==='income').reduce((a,e)=>a+e.amount,0);let expense=c.entries.filter(e=>e.kind==='expense').reduce((a,e)=>a+e.amount,0);let open=c.entries.filter(e=>e.kind==='expense'&&e.reimburse&&!e.refunded).reduce((a,e)=>a+e.amount,0);return{income,expense,open,balance:income-expense}}
 function render(){
@@ -221,8 +293,9 @@ async function loadFromOneDrive() {
   }
 
   state = cloudState;
-  localStorage.setItem(KEY, JSON.stringify(state));
-  render();
+localStorage.setItem(KEY, JSON.stringify(state));
+cloudSaveEnabled = true;
+render();
 
   document.getElementById("accountStatus").textContent =
     "Angemeldet als: " + microsoftAccount.username +
