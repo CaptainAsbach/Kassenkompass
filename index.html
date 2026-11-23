@@ -299,11 +299,12 @@ async function getOneDriveToken() {
 }
 
 
+
 document.getElementById("syncBtn").onclick = async () => {
   const button = document.getElementById("syncBtn");
 
   try {
-    button.textContent = "Ordner wird gelesen ...";
+    button.textContent = "Speichere in OneDrive ...";
     button.disabled = true;
 
     const token = await getOneDriveToken();
@@ -322,20 +323,16 @@ document.getElementById("syncBtn").onclick = async () => {
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error?.message || JSON.stringify(result));
+      throw new Error(result.error?.message || "Ordner nicht erreichbar.");
     }
 
     const folder = result.remoteItem || result;
     const driveId = folder.parentReference?.driveId;
-    const itemId = folder.id;
-
-    if (!driveId || !itemId) {
-      throw new Error("Die Ordner-ID oder Laufwerks-ID fehlt.");
-    }
+    const folderId = folder.id;
 
     const filesResponse = await fetch(
       "https://graph.microsoft.com/v1.0/drives/" +
-      driveId + "/items/" + itemId + "/children",
+      driveId + "/items/" + folderId + "/children",
       {
         headers: {
           Authorization: "Bearer " + token.accessToken
@@ -346,24 +343,49 @@ document.getElementById("syncBtn").onclick = async () => {
     const filesResult = await filesResponse.json();
 
     if (!filesResponse.ok) {
-      throw new Error(filesResult.error?.message || JSON.stringify(filesResult));
+      throw new Error(filesResult.error?.message || "Dateiliste nicht lesbar.");
     }
 
-    const names = (filesResult.value || []).map(file => file.name);
-
-    alert(
-      "ORDNER ERFOLGREICH GELESEN!\n\n" +
-      "Gefundene Dateien:\n" +
-      (names.length ? names.join("\n") : "Der Ordner ist leer.")
+    const file = filesResult.value.find(
+      item => item.name === "KassenKompass.json"
     );
 
+    if (!file) {
+      throw new Error("KassenKompass.json wurde nicht gefunden.");
+    }
+
+    const uploadResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/drives/" +
+      driveId + "/items/" + file.id + "/content",
+      {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + token.accessToken,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(state)
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json();
+      throw new Error(errorData.error?.message || "Speichern fehlgeschlagen.");
+    }
+
+    document.getElementById("accountStatus").textContent =
+      "Angemeldet als: " + microsoftAccount.username +
+      " · OneDrive-Speicherung erfolgreich";
+
+    alert("Erfolg! Die Kassendaten wurden in OneDrive gespeichert.");
+
   } catch (error) {
-    alert("Fehler:\n" + error.message);
+    alert("Fehler beim Speichern:\n" + error.message);
   } finally {
     button.textContent = "Mit OneDrive synchronisieren";
     button.disabled = false;
   }
 };
+  
   
 render();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
