@@ -26,6 +26,10 @@ label{display:block;font-size:13px;font-weight:650;margin:0 0 6px}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .tab{background:#e5ece6;color:#23432c}.tab.active{background:var(--green);color:white}
 .hidden{display:none!important}
+  body:not(.authenticated) main > section:not(#accountPanel),
+body:not(.authenticated) main > .tabs {
+  display: none !important;
+}
 .item{padding:12px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
 .item:first-child{border-top:0}.amount{font-weight:750;white-space:nowrap}.positive{color:#18733a}.negative{color:var(--red)}
 .pill{font-size:11px;padding:4px 8px;border-radius:20px;background:#edf3ee;color:#35523c;display:inline-block}
@@ -295,6 +299,7 @@ async function loadFromOneDrive() {
   state = cloudState;
 localStorage.setItem(KEY, JSON.stringify(state));
 cloudSaveEnabled = true;
+document.body.classList.add("authenticated");
 render();
 
   document.getElementById("accountStatus").textContent =
@@ -348,6 +353,7 @@ document.getElementById("loginBtn").onclick = async () => {
 };
 
 document.getElementById("logoutBtn").onclick = async () => {
+  document.body.classList.remove("authenticated");
   await msalApp.logoutPopup({ account: microsoftAccount });
   microsoftAccount = null;
   location.reload();
