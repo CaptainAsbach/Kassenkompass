@@ -211,60 +211,50 @@ async function getOneDriveToken() {
   }
 }
 
+
 document.getElementById("syncBtn").onclick = async () => {
   const button = document.getElementById("syncBtn");
 
   try {
-    button.textContent = "Synchronisiere ...";
+    button.textContent = "Ordner wird geprüft ...";
     button.disabled = true;
 
     const token = await getOneDriveToken();
-    const url = "https://graph.microsoft.com/v1.0/me/drive/root:/Jugendfeuerwehr Einhart/Kasse/KassenKompass/KassenKompass.json:/content";
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: "Bearer " + token.accessToken
-      }
-    });
+    const shareId = "u!aHR0cHM6Ly8xZHJ2Lm1zL2YvYy8wODVBQjg5MEM5MEFDRjkzL0FpTW1kaWFNNjNWSHI4blJfV1dJdnpNP2U9bWlZdTJu";
 
-    if (response.status === 404) {
-      const upload = await fetch(url, {
-        method: "PUT",
+    const response = await fetch(
+      "https://graph.microsoft.com/v1.0/shares/" + shareId + "/driveItem",
+      {
         headers: {
-          Authorization: "Bearer " + token.accessToken,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(state, null, 2)
-      });
-
-      if (!upload.ok) {
-        throw new Error("Speichern fehlgeschlagen: " + await upload.text());
+          Authorization: "Bearer " + token.accessToken
+        }
       }
+    );
 
-      alert("Erfolg! Deine Kassenbücher wurden erstmals in OneDrive gespeichert.");
-    } else if (response.ok) {
-      const cloudState = await response.json();
+    const result = await response.json();
 
-      if (!Array.isArray(cloudState.cashbooks)) {
-        throw new Error("Die OneDrive-Datei enthält keine gültigen Kassenbuchdaten.");
-      }
-
-      if (confirm("Eine KassenKompass-Datei existiert bereits. Möchtest du deren Daten auf dieses Gerät laden?")) {
-        state = cloudState;
-        localStorage.setItem(KEY, JSON.stringify(state));
-        render();
-        alert("Die Daten wurden aus OneDrive geladen.");
-      }
-    } else {
-      throw new Error("OneDrive-Fehler: " + await response.text());
+    if (!response.ok) {
+      throw new Error(result.error?.message || JSON.stringify(result));
     }
+
+    const folder = result.remoteItem || result;
+
+    alert(
+      "ORDNERZUGRIFF ERFOLGREICH!\n\n" +
+      "Name: " + (folder.name || result.name) + "\n" +
+      "Ordner-ID: " + (folder.id || result.id) + "\n\n" +
+      "Der freigegebene Ordner ist erreichbar."
+    );
+
   } catch (error) {
-    alert("Synchronisierung fehlgeschlagen:\n" + error.message);
+    alert("Ordnerzugriff fehlgeschlagen:\n" + error.message);
   } finally {
     button.textContent = "Mit OneDrive synchronisieren";
     button.disabled = false;
   }
 };
+  
 render();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script>
