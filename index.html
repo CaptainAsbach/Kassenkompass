@@ -190,10 +190,12 @@ const save = () => {
   render();
 
   if (cloudSaveEnabled) {
-    clearTimeout(cloudSaveTimer);
-    cloudSaveTimer = setTimeout(saveToOneDrive, 1000);
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(() => {
+    cloudSaveTimer = null;
+    saveToOneDrive();
+  }, 1000);
   }
-};
   
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function totals(c){let income=c.entries.filter(e=>e.kind==='income').reduce((a,e)=>a+e.amount,0);let expense=c.entries.filter(e=>e.kind==='expense').reduce((a,e)=>a+e.amount,0);let open=c.entries.filter(e=>e.kind==='expense'&&e.reimburse&&!e.refunded).reduce((a,e)=>a+e.amount,0);return{income,expense,open,balance:income-expense}}
@@ -311,6 +313,8 @@ async function loadFromOneDrive() {
   state = cloudState;
 localStorage.setItem(KEY, JSON.stringify(state));
 cloudSaveEnabled = true;
+if (cloudPollTimer) clearInterval(cloudPollTimer);
+cloudPollTimer = setInterval(checkOneDriveChanges, 15000);
 document.body.classList.add("authenticated");
 render();
 
@@ -322,7 +326,7 @@ render();
 }
 
 async function checkOneDriveChanges() {
-  if (!cloudSaveEnabled || !microsoftAccount || cloudSaveInProgress) return;
+  if (!cloudSaveEnabled || !microsoftAccount || cloudSaveInProgress || cloudSaveTimer !== null) return;
 
   try {
     const token = await getOneDriveToken();
