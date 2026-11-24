@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#14532d">
+<link rel="manifest" href="manifest.webmanifest">
+<script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
+<title>KassenKompass</title>
+<style>
+:root{--green:#14532d;--green2:#166534;--bg:#f3f6f3;--line:#e2e9e2;--muted:#647067;--red:#b42318}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:16px system-ui,sans-serif;color:#18221b}
+header{background:var(--green);color:white;padding:22px max(18px,calc((100vw - 920px)/2))}
+header h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:#d8eadc;font-size:14px}
+main{max-width:920px;margin:22px auto;padding:0 16px 40px}
+.card{background:white;border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 16px;box-shadow:0 2px 8px #142b1710}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+h2{font-size:18px;margin:0 0 14px}.muted{color:var(--muted);font-size:13px}
+.balance{font-size:32px;font-weight:750;color:var(--green)}
+button{border:0;border-radius:10px;background:var(--green2);color:white;padding:11px 15px;font-weight:650;font-size:14px;cursor:pointer}
+button.secondary{background:#e8efe9;color:var(--green)}button.danger{background:#fff0ee;color:var(--red)}
+button:disabled{opacity:.55;cursor:wait}
+input,select,textarea{width:100%;border:1px solid #ccd8ce;border-radius:10px;padding:11px;font:inherit;background:white;color:#18221b}
+label{display:block;font-size:13px;font-weight:650;margin:0 0 6px}.field{margin-bottom:12px;flex:1;min-width:180px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.tab{background:#e5ece6;color:#23432c}.tab.active{background:var(--green);color:white}
+.hidden{display:none!important}
+body:not(.authenticated) main>.app-area,body:not(.authenticated) main>.tabs{display:none!important}
+.item{padding:12px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
+.item:first-child{border-top:0}.amount{font-weight:750;white-space:nowrap}.positive{color:#18733a}.negative{color:var(--red)}
+.pill{font-size:11px;padding:4px 8px;border-radius:20px;background:#edf3ee;color:#35523c;display:inline-block}.pill.open{background:#fff1d6;color:#805300}
+.personrow{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}
+.notice{background:#fff8e8;border:1px solid #f2dfad;padding:12px;border-radius:12px;font-size:13px;line-height:1.45}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.balance{font-size:28px}main{margin-top:14px}}
+</style>
+</head>
+<body>
+<header><h1>KassenKompass</h1><p>Gemeinsame Kassen einfach verwalten</p></header>
+<main>
+<section class="card" id="accountPanel">
+<h2>Microsoft-Konto</h2><p id="accountStatus" class="muted">Nicht angemeldet</p>
+<button id="loginBtn">Mit Microsoft anmelden</button>
+<button id="logoutBtn" class="secondary hidden">Abmelden</button>
+<button id="syncBtn" class="secondary hidden">Jetzt synchronisieren</button>
+</section>
+<section class="card app-area">
+<div class="row between"><div><div class="muted">Aktive Kasse</div><h2 id="activeName" style="margin:3px 0 0">Noch keine Kasse</h2></div><button class="secondary" id="manageBtn">Kassen verwalten</button></div>
+<div class="muted" style="margin-top:18px">Aktueller Kassenstand</div><div class="balance" id="balance">0,00 €</div>
+<div class="row" style="gap:22px;margin-top:10px"><div><div class="muted">Einnahmen</div><strong id="incomeTotal">0,00 €</strong></div><div><div class="muted">Ausgaben</div><strong id="expenseTotal">0,00 €</strong></div><div><div class="muted">Offene Erstattungen</div><strong id="openTotal">0,00 €</strong></div></div>
+</section>
+<div class="tabs"><button class="tab active" data-tab="book">Buchungen</button><button class="tab" data-tab="new">Neue Buchung</button><button class="tab" data-tab="refunds">Erstattungen</button><button class="tab" data-tab="people">Personen</button></div>
+<section id="panel-book" class="card app-area"><div class="row between"><h2>Letzte Buchungen</h2><button class="secondary" id="exportBtn">Daten exportieren</button></div><div id="transactions"></div></section>
+<section id="panel-new" class="card app-area hidden"><h2>Neue Buchung erfassen</h2>
+<form id="entryForm"><div class="grid"><div class="field"><label for="kind">Buchungsart</label><select id="kind"><option value="expense">Ausgabe</option><option value="income">Einnahme</option></select></div><div class="field"><label for="date">Datum</label><input id="date" type="date" required></div></div>
+<div class="grid"><div class="field"><label for="amount">Betrag in Euro</label><input id="amount" type="number" min="0.01" step="0.01" required></div><div class="field"><label for="category">Kategorie</label><input id="category" placeholder="z. B. Getränke, Material"></div></div>
+<div class="field"><label for="description">Beschreibung</label><input id="description" required></div>
+<div id="payerFields"><div class="field"><label for="payer">Wer hat bezahlt?</label><input id="payer" list="peopleList"><datalist id="peopleList"></datalist></div><div class="field"><label for="reimburse">Erstattung nötig?</label><select id="reimburse"><option value="yes">Ja – Erstattung offen</option><option value="no">Nein</option></select></div></div>
+<div class="field"><label for="note">Notiz (optional)</label><textarea id="note" rows="2"></textarea></div><button type="submit">Buchung speichern</button></form></section>
+<section id="panel-refunds" class="card app-area hidden"><h2>Offene Erstattungen</h2><div id="refundList"></div></section>
+<section id="panel-people" class="card app-area hidden"><h2>Auslagen je Person</h2><div id="peopleSummary"></div></section>
+<section id="managePanel" class="card app-area hidden"><h2>Kassen verwalten</h2><div class="field"><label for="newCashName">Neue Kasse anlegen</label><input id="newCashName" placeholder="z. B. Jugendfeuerwehr Einhart"></div><button id="createCash">Kasse erstellen</button><div id="cashList" style="margin-top:16px"></div></section>
+<section class="notice app-area"><strong>Hinweis:</strong> Änderungen werden in OneDrive gespeichert, solange eine Verbindung besteht. Die App muss geöffnet sein, damit Synchronisierung stattfinden kann. Bei gleichzeitigen Änderungen mehrerer Personen bitte nacheinander arbeiten und vor dem Bearbeiten synchronisieren. Vor dem Einsatz mit echten Kassendaten bitte gründlich testen und regelmäßig exportieren.</section>
+</main>
+<script>
+"use strict";
+const KEY="kassenkompass-prototype-v1";
+const SHARE_ID="u!aHR0cHM6Ly8xZHJ2Lm1zL2YvYy8wODVBQjg5MEM5MEFDRjkzL0FpTW1kaWFNNjNWSHI4blJfV1dJdnpNP2U9bWlZdTJu";
+const SCOPES=["Files.ReadWrite"];
+const GRAPH="https://graph.microsoft.com/v1.0";
+const eur=n=>Number(n||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"});
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let state={cashbooks:[],active:null};
+let microsoftAccount=null, cloudSaveEnabled=false, cloudSaveTimer=null, cloudPollTimer=null, cloudSaveInProgress=false, lastCloudModified=null;
+
+const msalApp=new msal.PublicClientApplication({
+ auth:{clientId:"2216f9f1-ec66-4c5a-91c8-495376dce574",authority:"https://login.microsoftonline.com/consumers",redirectUri:window.location.origin+window.location.pathname},
+ cache:{cacheLocation:"sessionStorage"}
+});
+function normalizeState(data){
+ if(!data||!Array.isArray(data.cashbooks))throw new Error("Die OneDrive-Datei enthält keine gültigen Kassendaten.");
+ data.cashbooks.forEach(c=>{if(!Array.isArray(c.entries))c.entries=[];});
+ if(!data.cashbooks.some(c=>c.id===data.active))data.active=data.cashbooks[0]?.id||null;
+ return data;
+}
+function active(){return state.cashbooks.find(c=>c.id===state.active);}
+function localSave(){localStorage.setItem(KEY,JSON.stringify(state));}
+function totals(c){const entries=c?.entries||[];const income=entries.filter(e=>e.kind==="income").reduce((a,e)=>a+Number(e.amount||0),0);const expense=entries.filter(e=>e.kind==="expense").reduce((a,e)=>a+Number(e.amount||0),0);const open=entries.filter(e=>e.kind==="expense"&&e.reimburse&&!e.refunded).reduce((a,e)=>a+Number(e.amount||0),0);return{income,expense,open,balance:income-expense};}
+function render(){
+ const c=active(),t=totals(c);document.getElementById("activeName").textContent=c?.name||"Noch keine Kasse";
+ document.getElementById("balance").textContent=eur(t.balance);document.getElementById("incomeTotal").textContent=eur(t.income);document.getElementById("expenseTotal").textContent=eur(t.expense);document.getElementById("openTotal").textContent=eur(t.open);
+ const entries=c?[...c.entries].reverse():[];
+ document.getElementById("transactions").innerHTML=entries.length?entries.map(e=>`<div class="item"><div><strong>${esc(e.description)}</strong><div class="muted">${esc(e.date)} · ${esc(e.category||"Ohne Kategorie")} ${e.kind==="expense"&&e.payer?"· bezahlt von "+esc(e.payer):""}</div>${e.kind==="expense"&&e.reimburse?`<span class="pill ${e.refunded?"":"open"}">${e.refunded?"Erstattet":"Erstattung offen"}</span>`:""}</div><div class="amount ${e.kind==="income"?"positive":"negative"}">${e.kind==="income"?"+":"−"} ${eur(e.amount)}</div></div>`).join(""):'<p class="muted">Noch keine Buchungen vorhanden.</p>';
+ const open=c?c.entries.filter(e=>e.kind==="expense"&&e.reimburse&&!e.refunded):[];
+ document.getElementById("refundList").innerHTML=open.length?open.map(e=>`<div class="item"><div><strong>${esc(e.payer||"Unbekannt")}</strong><div class="muted">${esc(e.description)} · ${esc(e.date)}</div><span class="pill open">Offen</span></div><div style="text-align:right"><div class="amount">${eur(e.amount)}</div><button class="secondary" onclick="markRefunded('${e.id}')">Als bezahlt markieren</button></div></div>`).join(""):'<p class="muted">Keine offenen Erstattungen.</p>';
+ const by={};if(c)c.entries.filter(e=>e.kind==="expense"&&e.payer).forEach(e=>{by[e.payer]??={paid:0,refunded:0,open:0};by[e.payer].paid+=Number(e.amount||0);if(e.reimburse){if(e.refunded)by[e.payer].refunded+=Number(e.amount||0);else by[e.payer].open+=Number(e.amount||0);}});
+ const names=Object.keys(by);document.getElementById("peopleSummary").innerHTML=names.length?names.map(n=>`<div class="personrow"><div><strong>${esc(n)}</strong><div class="muted">Ausgelegt ${eur(by[n].paid)} · zurück ${eur(by[n].refunded)}</div></div><div style="text-align:right"><strong>${eur(by[n].open)}</strong><div class="muted">noch offen</div></div></div>`).join(""):'<p class="muted">Noch keine Auslagen vorhanden.</p>';
+ document.getElementById("peopleList").innerHTML=names.map(n=>`<option value="${esc(n)}">`).join("");
+ document.getElementById("cashList").innerHTML=state.cashbooks.map(x=>`<div class="item"><div><strong>${esc(x.name)}</strong><div class="muted">${x.entries.length} Buchungen</div></div><div class="row"><button class="secondary" onclick="selectCash('${x.id}')">Öffnen</button><button class="danger" onclick="deleteCash('${x.id}')">Löschen</button></div></div>`).join("")||'<p class="muted">Noch keine Kasse angelegt.</p>';
+ document.getElementById("payerFields").classList.toggle("hidden",document.getElementById("kind").value==="income");
+}
+function setStatus(message){document.getElementById("accountStatus").textContent=message;}
+function showMicrosoftStatus(){
+ const login=document.getElementById("loginBtn"),logout=document.getElementById("logoutBtn"),sync=document.getElementById("syncBtn");
+ if(microsoftAccount){login.classList.add("hidden");logout.classList.remove("hidden");sync.classList.remove("hidden");}
+ else{login.classList.remove("hidden");logout.classList.add("hidden");sync.classList.add("hidden");}
+}
+async function getToken(){
+ try{return await msalApp.acquireTokenSilent({scopes:SCOPES,account:microsoftAccount});}
+ catch(e){return await msalApp.acquireTokenPopup({scopes:SCOPES,account:microsoftAccount});}
+}
+async function graph(path,options={}){
+ const token=await getToken();const response=await fetch(GRAPH+path,{...options,headers:{Authorization:"Bearer "+token.accessToken,...(options.headers||{})}});
+ if(!response.ok){let detail="";try{const j=await response.json();detail=j.error?.message||"";}catch{}throw new Error(detail||`Microsoft Graph Fehler (${response.status})`);}
+ return response;
+}
+async function getDataFile(){
+ const shared=await graph("/shares/"+SHARE_ID+"/driveItem");
+ const item=await shared.json();const folder=item.remoteItem||item;
+ const driveId=folder.parentReference?.driveId||item.remoteItem?.parentReference?.driveId;
+ const folderId=folder.id;
+ if(!driveId||!folderId)throw new Error("Der freigegebene OneDrive-Ordner konnte nicht aufgelöst werden.");
+ const listing=await graph(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(folderId)}/children`);
+ const files=(await listing.json()).value||[];
+ const file=files.find(x=>x.name==="KassenKompass.json");
+ if(!file)throw new Error("KassenKompass.json wurde im freigegebenen Ordner nicht gefunden.");
+ return{driveId,file};
+}
+async function loadFromOneDrive(showAlert=false){
+ setStatus("Lade gemeinsame Kassendaten …");
+ const {driveId,file}=await getDataFile();
+ const response=await graph(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(file.id)}/content`);
+ state=normalizeState(await response.json());localSave();lastCloudModified=file.lastModifiedDateTime||null;cloudSaveEnabled=true;
+ document.body.classList.add("authenticated");showMicrosoftStatus();render();
+ setStatus("Angemeldet als: "+microsoftAccount.username+" · OneDrive verbunden");
+ if(cloudPollTimer)clearInterval(cloudPollTimer);
+ cloudPollTimer=setInterval(checkCloudChanges,20000);
+ if(showAlert)alert("Die gemeinsamen Kassendaten wurden geladen.");
+}
+async function saveToOneDrive(){
+ if(!cloudSaveEnabled||!microsoftAccount||cloudSaveInProgress)return;
+ cloudSaveInProgress=true;setStatus("Speichere in OneDrive …");
+ try{
+  const {driveId,file}=await getDataFile();
+  const token=await getToken();
+  const response=await fetch(`${GRAPH}/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(file.id)}/content`,{
+   method:"PUT",headers:{Authorization:"Bearer "+token.accessToken,"Content-Type":"application/json",...(file.eTag?{"If-Match":file.eTag}:{})},body:JSON.stringify(state)
+  });
+  if(response.status===412)throw new Error("Die Datei wurde zwischenzeitlich geändert. Bitte zuerst synchronisieren und die Änderungen vergleichen.");
+  if(!response.ok){let msg="Speichern fehlgeschlagen.";try{msg=(await response.json()).error?.message||msg;}catch{}throw new Error(msg);}
+  const saved=await response.json();lastCloudModified=saved.lastModifiedDateTime||null;
+  setStatus("Angemeldet als: "+microsoftAccount.username+" · Zuletzt gespeichert");
+ }catch(e){setStatus("Speicherfehler: "+e.message);alert("OneDrive-Speicherfehler:\n"+e.message);}
+ finally{cloudSaveInProgress=false;}
+}
+function scheduleSave(){
+ localSave();render();
+ if(cloudSaveEnabled){clearTimeout(cloudSaveTimer);cloudSaveTimer=setTimeout(()=>{cloudSaveTimer=null;saveToOneDrive();},900);}
+}
+async function checkCloudChanges(){
+ if(!cloudSaveEnabled||!microsoftAccount||cloudSaveInProgress||cloudSaveTimer!==null)return;
+ try{
+  const {driveId,file}=await getDataFile();
+  if(file.lastModifiedDateTime&&file.lastModifiedDateTime!==lastCloudModified){
+   const response=await graph(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(file.id)}/content`);
+   state=normalizeState(await response.json());localSave();lastCloudModified=file.lastModifiedDateTime;render();
+   setStatus("Angemeldet als: "+microsoftAccount.username+" · Gemeinsame Daten aktualisiert");
+  }
+ }catch(e){console.warn("Synchronisierung:",e);setStatus("Synchronisierungsproblem: "+e.message);}
+}
+window.markRefunded=id=>{const e=active()?.entries.find(x=>x.id===id);if(e){e.refunded=true;e.refundedAt=new Date().toISOString().slice(0,10);scheduleSave();}};
+window.selectCash=id=>{state.active=id;scheduleSave();document.getElementById("managePanel").classList.add("hidden");};
+window.deleteCash=id=>{if(confirm("Diese Kasse samt Buchungen wirklich löschen?")){state.cashbooks=state.cashbooks.filter(x=>x.id!==id);if(state.active===id)state.active=state.cashbooks[0]?.id||null;scheduleSave();}};
+document.getElementById("createCash").onclick=()=>{const name=document.getElementById("newCashName").value.trim();if(!name)return alert("Bitte einen Kassennamen eingeben.");const c={id:crypto.randomUUID(),name,entries:[]};state.cashbooks.push(c);state.active=c.id;document.getElementById("newCashName").value="";scheduleSave();};
+document.getElementById("manageBtn").onclick=()=>document.getElementById("managePanel").classList.toggle("hidden");
+document.getElementById("kind").onchange=render;
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));["book","new","refunds","people"].forEach(k=>document.getElementById("panel-"+k).classList.toggle("hidden",k!==b.dataset.tab));document.getElementById("managePanel").classList.add("hidden");});
+document.getElementById("entryForm").onsubmit=e=>{e.preventDefault();const c=active();if(!c)return alert("Bitte zuerst eine Kasse erstellen.");const kind=document.getElementById("kind").value;const entry={id:crypto.randomUUID(),kind,date:document.getElementById("date").value,amount:Math.round(Number(document.getElementById("amount").value)*100)/100,category:document.getElementById("category").value.trim(),description:document.getElementById("description").value.trim(),payer:kind==="expense"?document.getElementById("payer").value.trim():"",reimburse:kind==="expense"&&document.getElementById("reimburse").value==="yes",refunded:false,note:document.getElementById("note").value.trim()};if(!entry.amount||!entry.description)return;c.entries.push(entry);e.target.reset();document.getElementById("date").value=new Date().toISOString().slice(0,10);scheduleSave();document.querySelector('[data-tab="book"]').click();};
+document.getElementById("exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kassenkompass-daten.json";a.click();URL.revokeObjectURL(a.href);};
+document.getElementById("syncBtn").onclick=async()=>{const b=document.getElementById("syncBtn");b.disabled=true;try{await loadFromOneDrive(true);}catch(e){alert("Synchronisierung fehlgeschlagen:\n"+e.message);setStatus("Fehler: "+e.message);}finally{b.disabled=false;}};
+document.getElementById("loginBtn").onclick=async()=>{const b=document.getElementById("loginBtn");b.disabled=true;try{const result=await msalApp.loginPopup({scopes:SCOPES});microsoftAccount=result.account;showMicrosoftStatus();await loadFromOneDrive(true);}catch(e){microsoftAccount=null;showMicrosoftStatus();setStatus("Anmeldung fehlgeschlagen: "+e.message);alert("Microsoft-Anmeldung fehlgeschlagen:\n"+e.message);}finally{b.disabled=false;}};
+document.getElementById("logoutBtn").onclick=async()=>{if(cloudPollTimer)clearInterval(cloudPollTimer);clearTimeout(cloudSaveTimer);cloudSaveEnabled=false;document.body.classList.remove("authenticated");try{await msalApp.logoutPopup({account:microsoftAccount});}catch(e){console.warn(e);}microsoftAccount=null;showMicrosoftStatus();setStatus("Nicht angemeldet");};
+async function init(){
+ state=normalizeState(JSON.parse(localStorage.getItem(KEY)||'{"cashbooks":[],"active":null}'));
+ if(!state.cashbooks.length){const c={id:crypto.randomUUID(),name:"Beispielkasse",entries:[]};state.cashbooks=[c];state.active=c.id;localSave();}
+ document.getElementById("date").value=new Date().toISOString().slice(0,10);render();
+ await msalApp.initialize();
+ const accounts=msalApp.getAllAccounts();
+ if(accounts.length){microsoftAccount=accounts[0];showMicrosoftStatus();try{await loadFromOneDrive(false);}catch(e){setStatus("Microsoft angemeldet, OneDrive-Fehler: "+e.message);}}
+}
+init().catch(e=>{console.error(e);setStatus("Startfehler: "+e.message);});
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
+</script>
+</body>
+</html>
