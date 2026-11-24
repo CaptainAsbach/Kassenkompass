@@ -109,16 +109,30 @@ small{color:var(--muted)}
   </section>
 </main>
 <script>
-const KEY='kassenkompass-prototype-v1';
-let state=JSON.parse(localStorage.getItem(KEY)||'{"cashbooks":[],"active":null}');
-const eur=n=>Number(n||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
-const active=()=>state.cashbooks.find(c=>c.id===state.active);
+
+const KEY = 'kassenkompass-prototype-v1';
+
+let state = JSON.parse(
+  localStorage.getItem(KEY) || '{"cashbooks":[],"active":null}'
+);
 
 let cloudSaveEnabled = false;
 let cloudSaveTimer = null;
+let cloudPollTimer = null;
+let lastCloudModified = null;
+let cloudSaveInProgress = false;
+let microsoftAccount = null;
+
+const eur = n => Number(n || 0).toLocaleString('de-DE', {
+  style: 'currency',
+  currency: 'EUR'
+});
+
+const active = () => state.cashbooks.find(c => c.id === state.active);
 
 async function saveToOneDrive() {
   if (!cloudSaveEnabled || !microsoftAccount) return;
+
   cloudSaveInProgress = true;
 
   try {
@@ -147,14 +161,10 @@ async function saveToOneDrive() {
     if (!filesResponse.ok) throw new Error(filesData.error?.message);
 
     const file = filesData.value.find(
-  item => item.name === "KassenKompass.json"
-);
+      item => item.name === "KassenKompass.json"
+    );
 
-if (!file) {
-  throw new Error("KassenKompass.json wurde nicht gefunden.");
-}
-
-lastCloudModified = file.lastModifiedDateTime;
+    if (!file) throw new Error("KassenKompass.json nicht gefunden.");
 
     const uploadResponse = await fetch(
       "https://graph.microsoft.com/v1.0/drives/" +
@@ -170,14 +180,15 @@ lastCloudModified = file.lastModifiedDateTime;
     );
 
     if (!uploadResponse.ok) throw new Error("Upload fehlgeschlagen.");
+
     const savedFile = await uploadResponse.json();
-lastCloudModified = savedFile.lastModifiedDateTime || null;
+    lastCloudModified = savedFile.lastModifiedDateTime || null;
 
     document.getElementById("accountStatus").textContent =
       "Angemeldet als: " + microsoftAccount.username +
       " · Mit OneDrive synchronisiert";
 
-    } catch (error) {
+  } catch (error) {
     document.getElementById("accountStatus").textContent =
       "OneDrive-Speicherfehler: " + error.message;
   } finally {
@@ -190,12 +201,13 @@ const save = () => {
   render();
 
   if (cloudSaveEnabled) {
-  clearTimeout(cloudSaveTimer);
-  cloudSaveTimer = setTimeout(() => {
-    cloudSaveTimer = null;
-    saveToOneDrive();
-  }, 1000);
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(() => {
+      cloudSaveTimer = null;
+      saveToOneDrive();
+    }, 1000);
   }
+};
   
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function totals(c){let income=c.entries.filter(e=>e.kind==='income').reduce((a,e)=>a+e.amount,0);let expense=c.entries.filter(e=>e.kind==='expense').reduce((a,e)=>a+e.amount,0);let open=c.entries.filter(e=>e.kind==='expense'&&e.reimburse&&!e.refunded).reduce((a,e)=>a+e.amount,0);return{income,expense,open,balance:income-expense}}
