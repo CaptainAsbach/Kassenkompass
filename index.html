@@ -119,6 +119,7 @@ let cloudSaveTimer = null;
 
 async function saveToOneDrive() {
   if (!cloudSaveEnabled || !microsoftAccount) return;
+  cloudSaveInProgress = true;
 
   try {
     const token = await getOneDriveToken();
@@ -146,10 +147,14 @@ async function saveToOneDrive() {
     if (!filesResponse.ok) throw new Error(filesData.error?.message);
 
     const file = filesData.value.find(
-      item => item.name === "KassenKompass.json"
-    );
+  item => item.name === "KassenKompass.json"
+);
 
-    if (!file) throw new Error("KassenKompass.json nicht gefunden.");
+if (!file) {
+  throw new Error("KassenKompass.json wurde nicht gefunden.");
+}
+
+lastCloudModified = file.lastModifiedDateTime;
 
     const uploadResponse = await fetch(
       "https://graph.microsoft.com/v1.0/drives/" +
@@ -165,14 +170,18 @@ async function saveToOneDrive() {
     );
 
     if (!uploadResponse.ok) throw new Error("Upload fehlgeschlagen.");
+    const savedFile = await uploadResponse.json();
+lastCloudModified = savedFile.lastModifiedDateTime || null;
 
     document.getElementById("accountStatus").textContent =
       "Angemeldet als: " + microsoftAccount.username +
       " · Mit OneDrive synchronisiert";
 
-  } catch (error) {
+    } catch (error) {
     document.getElementById("accountStatus").textContent =
       "OneDrive-Speicherfehler: " + error.message;
+  } finally {
+    cloudSaveInProgress = false;
   }
 }
 
@@ -226,6 +235,9 @@ const msalApp = new msal.PublicClientApplication({
 });
 
 let microsoftAccount = null;
+let cloudPollTimer = null;
+let lastCloudModified = null;
+let cloudSaveInProgress = false;
 
 
 async function loadFromOneDrive() {
@@ -309,6 +321,68 @@ render();
   alert("Die gemeinsamen Kassen wurden aus OneDrive geladen!");
 }
 
+async function checkOneDriveChanges() {
+  if (!cloudSaveEnabled || !microsoftAccount || cloudSaveInProgress) return;
+
+  try {
+    const token = await getOneDriveToken();
+
+    const shareId = "u!aHR0cHM6Ly8xZHJ2Lm1zL2YvYy8wODVBQjg5MEM5MEFDRjkzL0FpTW1kaWFNNjNWSHI4blJfV1dJdnpNP2U9bWlZdTJu";
+
+    const folderResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/shares/" + shareId + "/driveItem",
+      { headers: { Authorization: "Bearer " + token.accessToken } }
+    );
+
+    const folderData = await folderResponse.json();
+    if (!folderResponse.ok) return;
+
+    const folder = folderData.remoteItem || folderData;
+    const driveId = folder.parentReference?.driveId;
+    const folderId = folder.id;
+
+    const filesResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/drives/" +
+      driveId + "/items/" + folderId + "/children",
+      { headers: { Authorization: "Bearer " + token.accessToken } }
+    );
+
+    const filesData = await filesResponse.json();
+    if (!filesResponse.ok) return;
+
+    const file = filesData.value.find(
+      item => item.name === "KassenKompass.json"
+    );
+
+    if (!file || !file.lastModifiedDateTime) return;
+
+    if (file.lastModifiedDateTime === lastCloudModified) return;
+
+    const dataResponse = await fetch(
+      "https://graph.microsoft.com/v1.0/drives/" +
+      driveId + "/items/" + file.id + "/content",
+      { headers: { Authorization: "Bearer " + token.accessToken } }
+    );
+
+    if (!dataResponse.ok) return;
+
+    const cloudState = await dataResponse.json();
+    if (!Array.isArray(cloudState.cashbooks)) return;
+
+    state = cloudState;
+    localStorage.setItem(KEY, JSON.stringify(state));
+    lastCloudModified = file.lastModifiedDateTime;
+    render();
+
+    document.getElementById("accountStatus").textContent =
+      "Angemeldet als: " + microsoftAccount.username +
+      " · Daten aktualisiert";
+
+  } catch (error) {
+    console.error("OneDrive-Abgleich:", error);
+  }
+}
+  
 async function initMicrosoft() {
   await msalApp.initialize();
 
